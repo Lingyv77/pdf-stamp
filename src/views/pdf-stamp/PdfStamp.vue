@@ -1,0 +1,486 @@
+<template>
+  <div class="pdf-stamp" onbeforecopy='return false' onselect='document.selection.empty()' ondragstart='return false' onselectstart ='return false' >
+    <div class="scroll-box" @scroll="onScroll">
+      <div class="scroll-warp">
+        <div class="seal-list">
+          <div class="title"> 印章 </div>
+          <div class="seal-img">
+            <div class="seal-img-content">
+              <div v-for="(item, index) of sealOfTheList" :key="index" class="seal-item">
+                <div class="img-name"> {{ item.name }} </div>
+                <div class="img-content"> 
+                  <img class="img" :src="item.img"
+                    @mousedown.stop="moveDown" 
+                  /> 
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="content-box">
+          <input type="file" class="file" ref="fielinput" @change="uploadFile" />
+          <button class="save-down" @click.stop="saveDown">下载</button>
+          <div class="canvas-content" ref="canvasBox">
+            <canvas ref="pdfCanvas" class="canvas-pdf"> </canvas>
+          </div>
+          <div class="foot-bar">
+            <button @click="clickPre">上一页</button>
+            <span>第{{ pageNo }} / {{ pdfPageNumber }}页</span>
+            <button @click="clickNext">下一页</button>
+          </div>
+        </div>        
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  import pdfJS from "pdfjs-dist";
+  import "pdfjs-dist/build/pdf.worker.entry";
+
+  export default {
+    name: 'PdfStamp',
+    data() {
+      return {
+        pageNo: 0,
+        pdfPageNumber: 0,
+        renderingPage: false,
+        pdfData: null, // PDF的base64
+        scale: 1, // 缩放值
+        once: false, //执行一次获取总之
+        sealDomList: [], //储存印章dom
+        maxseal: 3, //最大seal数量
+        scrollTop: 0, //scrollTop
+        zIndex: 100, //给一个z-index 防止被其他元素遮盖导致立马触发mousedown 或者 mouseleave 删除元素
+
+        sealOfTheList: [
+         { name: "携程旅行", img: "https://webresource.c-ctrip.com/ares2/nfes/pc-home/1.0.65/default/image/logo.png" },
+         { name: "虎牙直播", img: "https://a.msstatic.com/huya/main3/static/img/logo.png" },
+         { name: "厦门VG", img: "https://livewebbs2.msstatic.com/avatar_1_d52819f40bc198fbd1098b30dc1edacf.png" },
+         { name: "画压印", img: "http://shopxmhs.oss-cn-beijing.aliyuncs.com/3e6ae202206221409453342.png" },
+         { name: "招聘", img: "http://shopxmhs.oss-cn-beijing.aliyuncs.com/1daa8202206221409468728.png" },
+         { name: "诚邀", img: "http://shopxmhs.oss-cn-beijing.aliyuncs.com/2c0ba202206221409472433.png" },
+         { name: "广州TTG", img: "https://livewebbs2.msstatic.com/avatar_1_bf8ba03e1f78144d84f3538672ca282b.png" },
+         { name: "成都AG超玩会", img: "https://esports-cdn.namitiyu.com/kog/team/FpDfD5z0hFN3N2gMpQHWx38qwmeF" },
+        ],
+      };
+    },
+    methods: {
+      /**
+       * 展示file
+       */
+      uploadFile() {
+        let inputDom = this.$refs.fielinput;
+        let file = inputDom.files[0];
+        let reader = new FileReader(); //文件读取
+        reader.readAsDataURL(file); //得到读取的文件
+        reader.onload = () => { //文件加载
+          let data = atob(
+          reader.result.substring(reader.result.indexOf(",") + 1) //取找到 ',' 符号后一个索引开始的所有数据 就是文件base64数据 
+          /** reader = data:application/pdf;base64,(JVBERi0xLj... = data) data文件base64数据
+              atob() 函数源码: 
+              globalScope.atob = function (input) { 
+                return Buffer.from(input, 'base64').toString('binary'); 'binary' 转换'utf8'编码格式: 返回字符串
+              }
+          */
+          );
+          this.loadPdfData(data);
+        };
+      },
+      loadPdfData(data) {
+        // 引入pdf.js的字体
+        let CMAP_URL = "https://unpkg.com/pdfjs-dist@2.0.943/cmaps/";
+        //读取base64的pdf流文件 返回pdf实例对象
+        this.pdfData = pdfJS.getDocument({
+          data: data, // PDF base64编码
+          cMapUrl: CMAP_URL,
+          cMapPacked: true,
+        });
+        this.renderPage(1);
+      },  
+      // 根据页码渲染相应的PDF
+      renderPage(num, callback) { //num传入页 返回对应页的pdf数据
+        this.renderingPage = true;
+        this.pdfData.promise.then((pdf) => {
+
+          if (!this.once) {
+            this.once = true;
+            this.pdfPageNumber = pdf.numPages;  //pdf.numPages 文件总页数
+          }
+
+          pdf.getPage(num).then((page) => {
+            // 获取DOM中为预览PDF准备好的canvasDOM对象 绘制内容
+            let canvas = this.$refs.pdfCanvas;
+            let viewport = page.getViewport(this.scale); //获取窗口属性
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;  
+
+            let ctx = canvas.getContext("2d");
+            let renderContext = {
+              canvasContext: ctx, //将对应ctx赋给renderContext.canvasContext 调用page.render(renderContext) 后内部 对应ctx.fillText() 绘制内容
+              viewport: viewport,
+            };
+            page.render(renderContext).then(() => { //渲染当前页内容
+              if (typeof(callback) === 'function') {
+                callback(ctx);
+              }
+              this.renderingPage = false;
+              this.pageNo = num; //获取当页内容
+            });
+          });
+        });
+      },
+      //上一页
+      clickPre() {
+        if (this.pdfPageNumber - 1 >= 1) {
+          this.renderPage(this.pageNo - 1);
+        }
+      },
+      //下一页
+      clickNext() {
+        if (this.pageNo + 1 <= this.pdfPageNumber) {
+          this.renderPage(this.pageNo + 1);
+        }
+      },
+
+      /**
+       * 创建seal dom
+       */
+      //按下
+      moveDown(event) {
+        let _this = this;
+        let targetImg = event.srcElement; //触发的img
+        let yDistance = (targetImg.offsetHeight/2);
+        let xDistance = (targetImg.offsetWidth/2);
+
+        let sealDomList = this.sealDomList;
+        let addIndex = sealDomList.length;
+
+        //创建img
+        let img =  targetImg.cloneNode(true);
+        img.tabIndex = addIndex;
+        img.style.position = 'absolute';
+        img.style.zIndex = this.zIndex;
+        img.style.width = targetImg.offsetWidth + 'px';
+        img.style.height = targetImg.offsetHeight + 'px';
+        img.style.backgroundPosition = 'center';
+        img.style.backgroundRepeat = 'no-repeat';
+        img.style.backgroundSize = '100%'; 
+        img.style.backgroundSize = '100%'; 
+
+        let canLeft = this.getCanvasBoxXY()[0];
+        let canTop = this.getCanvasBoxXY()[1];
+        _this.moveNode(img, (event.x - xDistance - canLeft), (event.y - yDistance - canTop + _this.scrollTop));
+
+        //移动
+        document.onmousemove = function(event) {
+          _this.moveNode(img, (event.x - xDistance - canLeft), (event.y - yDistance - canTop + _this.scrollTop));
+        }
+        //放下
+        document.onmouseup = function () {
+          document.onmousemove = null;
+          document.onmouseup = null;
+          Promise.resolve(
+            _this.clearDOM(img, _this.$refs.canvasBox)
+          ).then(res => {
+            if(!res) {
+              img.addEventListener( 'mousedown', _this.down, true);
+              img.addEventListener( 'mouseup', _this.up, true);
+              img.addEventListener( 'mouseleave', _this.up, true);
+            }
+          })
+        }
+
+        //插入元素
+        this.$refs.canvasBox.appendChild(img);
+        _this.sealDomList.push(img); //储存seal dom
+      },
+      /*
+        canvasBox面向内部成员 view 定位 x, y
+        返回: 数组[x, y]
+      */
+      getCanvasBoxXY() {
+        let canvasBox = this.$refs.canvasBox; //iamge放置定位盒子
+        let canLeft = this.getDOMtotal(canvasBox, "offsetLeft");
+        let canTop = this.getDOMtotal(canvasBox, "offsetTop");
+        return [canLeft, canTop];
+      },
+      //按下
+      down(e) {
+        let _this = this;
+        let ev = e.srcElement;
+        let yDistance = (ev.offsetHeight/2);
+        let xDistance = (ev.offsetWidth/2);
+
+        let canLeft = this.getCanvasBoxXY()[0];
+        let canTop = this.getCanvasBoxXY()[1];
+        _this.moveNode(ev, (e.x - xDistance - canLeft), (e.y - yDistance - canTop + _this.scrollTop));
+
+        ev.onmousemove = function (event) {
+          _this.moveNode(ev, (event.x - xDistance - canLeft), (event.y - yDistance - canTop + _this.scrollTop));
+        }
+      },
+      //放下
+      up(event) {
+        let target = event.srcElement;
+        target.onmousemove = null;
+        this.clearDOM(target, this.$refs.canvasBox);
+      },
+      //定位
+      moveNode(event, x, y) {
+        event.style.left = x + 'px';
+        event.style.top = y + 'px';
+      },
+      /**
+       * 是否出界需清除
+       * 返回: 布尔值 是否被删除
+       */
+      clearDOM(node, box) {
+        //node dom
+        let target = node;
+        let tarTop  =  target.offsetTop;
+        let tarLeft = target.offsetLeft;
+        let tarBottom = tarTop + target.offsetHeight;
+        let tarRight= tarLeft + target.offsetWidth;
+        
+        //box dom
+        let fileDom = box;
+        let height = fileDom.offsetHeight;
+        let width = fileDom.offsetWidth;
+
+        if (tarBottom <  0 || tarTop > height) {
+          this.removeSealChild(target);
+          return true;
+        }else if (tarRight < 0 || tarLeft > width) {
+          this.removeSealChild(target);
+          return true;
+        }
+
+        if (this.sealDomList.length > this.maxseal) { //最seal大数量
+          console.log(`超出最大数量:${this.maxseal}`); 
+          this.removeSealChild(node);
+        }
+
+        return false;
+      },
+      //移除元素
+      removeSealChild(node) {
+        this.$refs.canvasBox.removeChild(node);
+        this.sealDomList.splice(node.tabIndex, 1); 
+        for (let i = 0; i < this.sealDomList.length; i++) { //重新排序tabIndex标识
+          this.sealDomList[i].tabIndex = i;
+        }
+      },
+
+      /**
+       * canvas下载
+       */
+      saveDown() {
+        if (!this.pageNo) {
+          return console.log('请选择文件');
+        }else if (!this.sealDomList.length) {
+          return console.log('请给文件盖章');
+        }else{
+          this.drawImage(this.sealDomList);
+        }
+      },
+      //绘制图片
+      drawImage(imageList) {
+        let canvas = this.$refs.pdfCanvas;
+        let canvasBox = this.$refs.canvasBox;
+        let _this = this;
+        function func(ctx) {
+          let ratioX = canvas.width / canvasBox.offsetWidth;
+          let ratioY = canvas.height / canvasBox.offsetHeight; 
+          let count = 0; //当前进度
+          let totalCount = imageList.length; //总进度
+
+          for (let image of imageList) {
+            let imgLeft = image.offsetLeft;
+            let imgTop = image.offsetTop;
+            let x = imgLeft * ratioX;
+            let y = imgTop * ratioY;
+            
+            let img = new Image(20, 10);
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              count++;
+              ctx.drawImage(img, x, y, image.offsetWidth*ratioX, image.offsetHeight*ratioY);
+              if (count === totalCount) {
+                _this.canvasFile();
+                _this.backInitialState(_this.sealDomList);
+              }
+            };
+            img.src = image.src;
+          }
+        }
+        this.renderPage(this.pageNo, func);
+      },
+      //canvas 文件数据 下载
+      canvasFile() {
+        let canvas = this.$refs.pdfCanvas;
+        let dataURL = canvas.toDataURL('image/png'); //canva文件数据
+        this.downLoad(dataURL);
+      },
+      //下载文件
+      downLoad(url) {
+        let note = document.createElement('a');
+        note.download = 'FILE_SEAL'; // 设置下载的文件名，默认是'下载'
+        note.href = url;
+        document.body.appendChild(note);
+        note.click();
+        note.remove();
+      },
+      //下载成功 清空印章
+      backInitialState(domList) {
+        this.renderPage(this.pageNo);
+        let len = domList.length;
+        for (let i = 0; i < len; i++) {
+          this.removeSealChild(domList[0]);
+        }
+      },
+
+      /**
+       * scrollTop
+       */
+      onScroll(event) {
+        let target = event.srcElement;
+        this.scrollTop = target.scrollTop;
+      },
+      /**
+       * 递归检测DOM 所有上级属性来 得到总真实offsetList 或者 offsetTop
+       * node: 检测DOM
+       * key: 检测DOM的属性
+       * value: 初始计算存储 0
+       * 返回 所有自身且父等级上所有 DOM key 的总值
+       * window.getComputedStyle
+       */
+      getDOMtotal(node, key, value = 0) {
+
+        if (!node || node === document) {  //停止循环无可用的参数
+          return value;
+        }else if (!(node instanceof HTMLElement)) { //对node检测是否为DOM对象
+          throw new TypeError(`${node} is not a object of HTMLElement!`);
+        }
+
+        let parent = node.parentNode; //父级DOM
+        if (key === 'offsetLeft') { //css规则对应js  offsetLeft 只能访问到拥有定位 不为
+          let uncertain = ["static", "initial", "revert" , "unset" ]; //数列对应不定定位offsetLeft 通过父节拥有确定定位得到其他offsetLeft
+          let positionStyle = node.parentNode === document ? 'static' : window.getComputedStyle(parent).position; 
+          //window.getComputedStyle方法 不可调用 document 我们它查询到 不添加不计算
+          if (!~uncertain.indexOf(positionStyle)) { //static initial revert unset 定位对象与
+            value += node[key];
+          }
+        }else {  
+          value += node[key];
+        }
+        //DOM对象 再次检测 返回最终值
+        return this.getDOMtotal(parent, key, (value >>> 0));
+      },
+    },
+    mounted() {
+      this.$refs.canvasBox.style.position = 'relative'; //参照给定位 必定定位防止img 定位不定
+    },
+  };
+</script>
+
+<style scoped>
+.pdf-stamp {
+  width: 100vw;
+  height: 100vh;
+  background-color: white;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+  .scroll-box {
+    width: 100vw;
+    height: 100vh;
+    overflow-x: hidden;
+    overflow-y: scroll;
+    position: relative;
+  }
+  .scroll-box::-webkit-scrollbar {
+    display: none;
+  }
+    .scroll-warp {
+      display: flex;
+      position: relative;
+      width: 1000px;
+      margin: 200px;
+    }
+      .content-box {
+        text-align: center;
+      }
+      .file {
+        padding: 10px;
+      }
+      .canvas-content {
+        width: 500px;
+        height: 700px;
+        border: 3px double black;
+        position: relative;
+      }
+      .canvas-pdf {
+        width: 100%;
+        height: 100%;
+      }
+      .foot-bar {
+        position: relative;
+        padding: 10px;
+      }
+      .seal-list {
+        height: 400px;
+        text-align: center;
+        border: 2px solid;
+        background-color: #e7e7e7;
+        display: flex;
+        flex-direction: column;
+        margin-right: 100px;
+      }
+        .title {
+          font-size: 20px;
+          border-bottom: 1px solid #b8b8b8;
+        }
+        .seal-img {
+          flex: 1;
+          overflow-x: hidden;
+          overflow-y: scroll;
+        }
+        .seal-img::-webkit-scrollbar {
+          display: none;
+        }
+          .seal-img-content {
+            padding: 0 10px;
+          }
+            .seal-item {
+              margin: 10px 0;
+            }
+              .img-content {
+                height: 100px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+              }
+                .img-name {
+                  color: #cc0000;
+                  border: 1px solid;
+                  font-weight: 600;
+                  background-color: #fffdf9;
+                  border-radius: 10px;
+                }
+                .img-content .img {
+                  width: 100px;
+                }
+                .save-down {
+                  width: 100px;
+                  height: 30px;
+                  position: fixed;
+                  text-align: center;
+                  top: 50px;
+                  right: 100px;
+                }
+                button {
+                  margin: 0 20px;
+                }
+</style>
