@@ -12,7 +12,8 @@
     "install": "^0.13.0",
     "npm": "^8.12.2",
     "pdfjs-dist": "^2.0.943",
-    "vue": "^2.6.11"
+    "vue": "^2.6.11",
+    "vue-router": "^3.4.9"
   },
   "devDependencies": {
     "@vue/cli-plugin-babel": "~4.5.10",
