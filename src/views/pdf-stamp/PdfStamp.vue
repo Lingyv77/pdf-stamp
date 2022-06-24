@@ -59,6 +59,7 @@
         /**
          * option 设置项
          */
+        downFileText: "pdf_down_file", //下载文件名
         fileStamp: true, //是否需要给文件盖章 才可下载
         zIndex: 100, //给一个z-index 防止被其他元素遮盖导致立马触发mousedown 或者 mouseleave 删除元素
         sealOfTheList: [
@@ -382,7 +383,7 @@
       //下载文件
       downLoad(url) {
         let note = document.createElement('a');
-        note.download = 'FILE_SEAL'; // 设置下载的文件名，默认是'下载'
+        note.download = this.downFileText; // 设置下载的文件名，默认是'下载'
         note.href = url;
         document.body.appendChild(note);
         note.click();
@@ -452,9 +453,9 @@
           }
         }
         return dg(node, parent);
-      },
-    },
-  };
+      }
+    }
+  }
 </script>
 
 <style scoped>
