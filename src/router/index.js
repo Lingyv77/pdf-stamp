@@ -28,6 +28,11 @@ const routes = [
     name: 'PdfStamp',
     component: () => import('views/pdf-stamp/PdfStamp.vue')
   },
+  // {
+  //   path: '/TestPostion',
+  //   name: 'TestPostion',
+  //   component: () => import('views/testPosition/TestPostion.vue')
+  // },
 ]
 
 //配置路由关系

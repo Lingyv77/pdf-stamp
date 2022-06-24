@@ -18,14 +18,20 @@
           </div>
         </div>
         <div class="content-box">
-          <input type="file" class="file" ref="fielinput" @change="uploadFile" />
-          <button class="save-down" @click.stop="saveDown">下载</button>
-          <div class="canvas-content" ref="canvasBox">
-            <canvas ref="pdfCanvas" class="canvas-pdf"> </canvas>
+          <div class="with-file">
+            <input type="file" class="file" id="file" ref="fielinput" @change="uploadFile" style="display: none;"/>
+            <label class="select-file" for="file">选择文件</label> 
+            <span class="file-name"> {{ fileName }} </span>
+            <button class="save-down" @click.stop="saveDown">立即下载</button>
+          </div>
+          <div class="canvas-box-border">
+            <div class="canvas-content" ref="canvasBox">
+              <canvas ref="pdfCanvas" class="canvas-pdf"> </canvas>
+            </div>
           </div>
           <div class="foot-bar">
             <button @click="clickPre">上一页</button>
-            <span>第{{ pageNo }} / {{ pdfPageNumber }}页</span>
+            <span>第 {{ pageNo }} / {{ pdfPageNumber }} 页</span>
             <button @click="clickNext">下一页</button>
           </div>
         </div>        
@@ -46,13 +52,15 @@
         pdfPageNumber: 0,
         renderingPage: false,
         pdfData: null, // PDF的base64
-        scale: 1, // 缩放值
-        once: false, //执行一次获取总之
         sealDomList: [], //储存印章dom
-        maxseal: 3, //最大seal数量
         scrollTop: 0, //scrollTop
-        zIndex: 100, //给一个z-index 防止被其他元素遮盖导致立马触发mousedown 或者 mouseleave 删除元素
+        once: false, //执行一次获取总之
 
+        /**
+         * option 设置项
+         */
+        fileStamp: true, //是否需要给文件盖章 才可下载
+        zIndex: 100, //给一个z-index 防止被其他元素遮盖导致立马触发mousedown 或者 mouseleave 删除元素
         sealOfTheList: [
          { name: "携程旅行", img: "https://webresource.c-ctrip.com/ares2/nfes/pc-home/1.0.65/default/image/logo.png" },
          { name: "虎牙直播", img: "https://a.msstatic.com/huya/main3/static/img/logo.png" },
@@ -63,17 +71,51 @@
          { name: "广州TTG", img: "https://livewebbs2.msstatic.com/avatar_1_bf8ba03e1f78144d84f3538672ca282b.png" },
          { name: "成都AG超玩会", img: "https://esports-cdn.namitiyu.com/kog/team/FpDfD5z0hFN3N2gMpQHWx38qwmeF" },
         ],
+        scale: 3, // 缩放值
+        maxseal: 3, //最大seal数量
+        fileName: "尚未选择文件", //初始文件名
+
       };
     },
     methods: {
+    /**
+     * 环境函数回调*******
+     */
+      /**
+       * outMax() 
+       * max: 设置的最大值 newVale 触发执行的值(max+1)  
+       * 对应maxseal配置项
+       */
+      outMax(max, /*newVal*/) {
+          console.log(`超出最大数量:${max}`); 
+      },
+      /**
+       * notSelectFile 尚未选择文件回调 
+       * 无参数
+       */
+      notSelectFile() {
+        console.log('请选择文件');
+      },
+      /**
+       * notStamp 尚未选择文件回调 
+       * 无参数
+       * 对应fileStamp配置项
+       */
+      notStamp() {
+        console.log('请给文件盖章');
+      },
+
       /**
        * 展示file
        */
       uploadFile() {
-        let inputDom = this.$refs.fielinput;
-        let file = inputDom.files[0];
+        this.once = false;
+        let fileInput = this.$refs.fielinput;
+        let fileData = fileInput.files[0];
+
+        this.fileName = fileData.name;
         let reader = new FileReader(); //文件读取
-        reader.readAsDataURL(file); //得到读取的文件
+        reader.readAsDataURL(fileData); //得到读取的文件
         reader.onload = () => { //文件加载
           let data = atob(
           reader.result.substring(reader.result.indexOf(",") + 1) //取找到 ',' 符号后一个索引开始的所有数据 就是文件base64数据 
@@ -168,15 +210,16 @@
         img.style.backgroundSize = '100%'; 
         img.style.backgroundSize = '100%'; 
 
-        let canLeft = this.getCanvasBoxXY()[0];
-        let canTop = this.getCanvasBoxXY()[1];
+        let xy = this.getCanvasBoxXY();
+        let canLeft = xy[0];
+        let canTop = xy[1];
         _this.moveNode(img, (event.x - xDistance - canLeft), (event.y - yDistance - canTop + _this.scrollTop));
 
         //移动
         document.onmousemove = function(event) {
           _this.moveNode(img, (event.x - xDistance - canLeft), (event.y - yDistance - canTop + _this.scrollTop));
         }
-        //放下
+        //放下)
         document.onmouseup = function () {
           document.onmousemove = null;
           document.onmouseup = null;
@@ -186,7 +229,7 @@
             if(!res) {
               img.addEventListener( 'mousedown', _this.down, true);
               img.addEventListener( 'mouseup', _this.up, true);
-              img.addEventListener( 'mouseleave', _this.up, true);
+              img.addEventListener( 'mouseleave', _this.leave, true);
             }
           })
         }
@@ -201,19 +244,21 @@
       */
       getCanvasBoxXY() {
         let canvasBox = this.$refs.canvasBox; //iamge放置定位盒子
-        let canLeft = this.getDOMtotal(canvasBox, "offsetLeft");
-        let canTop = this.getDOMtotal(canvasBox, "offsetTop");
+        let canLeft = this.getDomLeft(canvasBox, "offsetLeft");
+        let canTop = this.getDomLeft(canvasBox, "offsetTop");
         return [canLeft, canTop];
       },
       //按下
-      down(e) {
+      down(e) { //拖拽 和 是否创建印章
         let _this = this;
         let ev = e.srcElement;
+        ev.style.zIndex = this.zIndex + 1; //我们希望拖拽印章的时候, 不会因为其他成员遮盖影响
         let yDistance = (ev.offsetHeight/2);
         let xDistance = (ev.offsetWidth/2);
 
-        let canLeft = this.getCanvasBoxXY()[0];
-        let canTop = this.getCanvasBoxXY()[1];
+        let xy = this.getCanvasBoxXY();
+        let canLeft = xy[0];
+        let canTop = xy[1];
         _this.moveNode(ev, (e.x - xDistance - canLeft), (e.y - yDistance - canTop + _this.scrollTop));
 
         ev.onmousemove = function (event) {
@@ -221,10 +266,15 @@
         }
       },
       //放下
-      up(event) {
+      up(event) { //停止拖拽且是否删除印章
         let target = event.srcElement;
+        target.style.zIndex = this.zIndex; //我们希望结束拖拽操作后 印章的时候回到初始层级;
         target.onmousemove = null;
         this.clearDOM(target, this.$refs.canvasBox);
+      },
+      //离开
+      leave(event) { //停止拖拽
+        event.srcElement.onmousemove = null;
       },
       //定位
       moveNode(event, x, y) {
@@ -257,8 +307,9 @@
         }
 
         if (this.sealDomList.length > this.maxseal) { //最seal大数量
-          console.log(`超出最大数量:${this.maxseal}`); 
+          this.outMax(this.maxseal, this.sealDomList.length );
           this.removeSealChild(node);
+          return true;
         }
 
         return false;
@@ -277,9 +328,9 @@
        */
       saveDown() {
         if (!this.pageNo) {
-          return console.log('请选择文件');
-        }else if (!this.sealDomList.length) {
-          return console.log('请给文件盖章');
+          return this.notSelectFile();
+        }else if (!this.sealDomList.length && this.fileStamp) {
+          return this.notStamp();
         }else{
           this.drawImage(this.sealDomList);
         }
@@ -289,6 +340,12 @@
         let canvas = this.$refs.pdfCanvas;
         let canvasBox = this.$refs.canvasBox;
         let _this = this;
+
+        if (!this.fileStamp && !this.sealDomList.length) { //跳过印章绘制
+          _this.canvasFile();
+          return _this.backInitialState(_this.sealDomList);
+        }
+        
         function func(ctx) {
           let ratioX = canvas.width / canvasBox.offsetWidth;
           let ratioY = canvas.height / canvasBox.offsetHeight; 
@@ -347,39 +404,55 @@
         let target = event.srcElement;
         this.scrollTop = target.scrollTop;
       },
+      
       /**
-       * 递归检测DOM 所有上级属性来 得到总真实offsetList 或者 offsetTop
-       * node: 检测DOM
-       * key: 检测DOM的属性
-       * value: 初始计算存储 0
-       * 返回 所有自身且父等级上所有 DOM key 的总值
-       * window.getComputedStyle
+       * 查找DOM 的 style属性
        */
-      getDOMtotal(node, key, value = 0) {
-
-        if (!node || node === document) {  //停止循环无可用的参数
-          return value;
-        }else if (!(node instanceof HTMLElement)) { //对node检测是否为DOM对象
-          throw new TypeError(`${node} is not a object of HTMLElement!`);
+      getStyleVal(node, styleStr) { 
+        let style;
+        // let parent = node.parentNode;
+        if (node === document) { //window.getComputedStyle方法 不可调用 document 我们不对他查询
+          style = null;
+        }else {
+          style = window.getComputedStyle(node)[styleStr];
         }
-
-        let parent = node.parentNode; //父级DOM
-        if (key === 'offsetLeft') { //css规则对应js  offsetLeft 只能访问到拥有定位 不为
-          let uncertain = ["static", "initial", "revert" , "unset" ]; //数列对应不定定位offsetLeft 通过父节拥有确定定位得到其他offsetLeft
-          let positionStyle = node.parentNode === document ? 'static' : window.getComputedStyle(parent).position; 
-          //window.getComputedStyle方法 不可调用 document 我们它查询到 不添加不计算
-          if (!~uncertain.indexOf(positionStyle)) { //static initial revert unset 定位对象与
-            value += node[key];
-          }
-        }else {  
-          value += node[key];
-        }
-        //DOM对象 再次检测 返回最终值
-        return this.getDOMtotal(parent, key, (value >>> 0));
+        return style;
+      },      
+      /**
+       * 去除单位得到数值
+       */
+      matchNum(str) {
+        const regexp = /\d+(\.\d+)?/g; //匹配数字
+        return Number((str+"").match(regexp)[0]) >>> 0;
       },
-    },
-    mounted() {
-      this.$refs.canvasBox.style.position = 'relative'; //参照给定位 必定定位防止img 定位不定
+      /**
+       * getDom 递归检测DOM 确定定位多次赋值 得到总真实offsetList 和 offsetTop
+       * key: 可选 offsetList 和 offsetTop
+       */
+      getDomLeft(node, key) {
+        let _this = this;
+        let value = 0; //储存值
+
+        let parent = node.parentNode;
+        let uncertain = ["static", "initial", "revert" , "unset" ]; //定位被确定
+        function dg(node, parent) {
+          if (parent === document) { //到达documen时候立即停止
+            return value;
+          }
+
+          if (!~uncertain.indexOf(_this.getStyleVal(parent, "position"))) { 
+            if (key === "offsetLeft") {
+              value += node[key] + _this.matchNum(_this.getStyleVal(parent, "borderLeft"));
+            }else if (key === "offsetTop") {
+              value += node[key] + _this.matchNum(_this.getStyleVal(parent, "borderTop"));
+            }
+            return dg(parent, parent.parentNode); //多次上级访问找找到父节确定定位的元素 做 坐标 位置重新规划为定位后的元素 进行下次访问再取坐标
+          }else {
+            return dg(node, parent.parentNode); //如果没找到一直上级查找 知道抵达父级为 document查询结束
+          }
+        }
+        return dg(node, parent);
+      },
     },
   };
 </script>
@@ -406,41 +479,24 @@
     .scroll-warp {
       display: flex;
       position: relative;
-      width: 1000px;
-      margin: 200px;
     }
-      .content-box {
-        text-align: center;
-      }
-      .file {
-        padding: 10px;
-      }
-      .canvas-content {
-        width: 500px;
-        height: 700px;
-        border: 3px double black;
-        position: relative;
-      }
-      .canvas-pdf {
-        width: 100%;
-        height: 100%;
-      }
-      .foot-bar {
-        position: relative;
-        padding: 10px;
-      }
       .seal-list {
         height: 400px;
         text-align: center;
-        border: 2px solid;
+        border: 2px solid #d3cece;
         background-color: #e7e7e7;
         display: flex;
         flex-direction: column;
-        margin-right: 100px;
+        margin: 50px 100px;
+        border-radius: 5px;
       }
         .title {
           font-size: 20px;
-          border-bottom: 1px solid #b8b8b8;
+          margin: 0 10px;
+          font-weight: 600;
+          padding: 5px;
+          color: #7a7a7a;
+          border-bottom: 1px solid #d6d6d6;
         }
         .seal-img {
           flex: 1;
@@ -456,31 +512,82 @@
             .seal-item {
               margin: 10px 0;
             }
+              .img-name {
+                color: #b6b6b6;
+                font-weight: 600;
+                padding: 10px;
+                background-color: #fffdf9;
+                border-radius: 5px;
+              }
               .img-content {
                 height: 100px;
                 display: flex;
                 justify-content: center;
                 align-items: center;
               }
-                .img-name {
-                  color: #cc0000;
-                  border: 1px solid;
-                  font-weight: 600;
-                  background-color: #fffdf9;
-                  border-radius: 10px;
-                }
                 .img-content .img {
                   width: 100px;
                 }
-                .save-down {
-                  width: 100px;
-                  height: 30px;
-                  position: fixed;
-                  text-align: center;
-                  top: 50px;
-                  right: 100px;
-                }
-                button {
-                  margin: 0 20px;
-                }
+      .content-box {
+        text-align: center;
+        position: relative;
+        margin: 50px;
+        background-color: #f3efe6;
+        padding: 10px 25px;
+        border-radius: 5px;
+      }
+        .with-file {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-bottom: 10px;
+        }
+          .select-file {
+            display: block;
+            padding: 10px 50px;
+            background-color: #e9d2ff;
+            color: #000;
+            border-radius: 5px;
+          }
+          .save-down {
+            padding: 10px 50px;
+            border-style: none;
+            display: block;
+            background-color: #e9d2ff;
+            border-radius: 5px;
+          }
+          .file-name {
+            color: #919191;
+            font-size: 18px;
+            font-weight: 600;
+          }
+        .canvas-box-border {
+          border: 4px double black;
+        }
+          .canvas-content {
+            width: 500px;
+            height: 700px;
+            position: relative; 
+          }
+          .canvas-pdf {
+            width: 100%;
+            height: 100%;
+          }
+        .foot-bar {
+          position: relative;
+          padding: 10px;
+          display: flex;
+          justify-content: space-around;
+          align-items: center;
+        }
+          .foot-bar button {
+            border-style: none;
+            background-color: #efc9aa;
+            display: block;
+            padding: 10px 50px;
+            border-radius: 5px;
+          }
+            .foot-bar span {
+              color: #186666;
+            }
 </style>

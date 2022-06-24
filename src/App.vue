@@ -64,10 +64,11 @@
   }
     .bar-item {
       flex: 1;
-      box-shadow:0 0 10px 1px rgba(167, 167, 167, 0.5) inset;
-      padding: 2px 10px;
+      padding: 10px 30px;
       margin: 0 10px;
       cursor: pointer;
+      background-color: #e7e7e7;
+      border-radius: 5px;
     }
     .bar-item:active {
       background-color: black;
