@@ -426,30 +426,36 @@
         const regexp = /\d+(\.\d+)?/g; //匹配数字
         return Number((str+"").match(regexp)[0]) >>> 0;
       },
+
       /**
-       * getDom 递归检测DOM 确定定位多次赋值 得到总真实offsetList 和 offsetTop
-       * key: 可选 offsetList 和 offsetTop
+       * getDom 递归检测DOM 确定定位多次赋值 得到总真实offsetLeft 和 offsetTop
+       * key: 可选 offsetLeft 和 offsetTop
        */
       getDomLeft(node, key) {
         let _this = this;
         let value = 0; //储存值
-
+ 
         let parent = node.parentNode;
         let uncertain = ["static", "initial", "revert" , "unset" ]; //定位被确定
         function dg(node, parent) {
-          if (parent === document) { //到达documen时候立即停止
-            return value;
-          }
-
           if (!~uncertain.indexOf(_this.getStyleVal(parent, "position"))) { 
-            if (key === "offsetLeft") {
-              value += node[key] + _this.matchNum(_this.getStyleVal(parent, "borderLeft"));
-            }else if (key === "offsetTop") {
-              value += node[key] + _this.matchNum(_this.getStyleVal(parent, "borderTop"));
+            switch(key) {
+              case "offsetLeft":
+                value += node[key] + _this.matchNum(_this.getStyleVal(parent, "borderLeft"));
+              break;
+              case "offsetTop":
+                value += node[key] + _this.matchNum(_this.getStyleVal(parent, "borderTop"));
+              break;
             }
             return dg(parent, parent.parentNode); //多次上级访问找找到父节确定定位的元素 做 坐标 位置重新规划为定位后的元素 进行下次访问再取坐标
           }else {
-            return dg(node, parent.parentNode); //如果没找到一直上级查找 知道抵达父级为 document查询结束
+            let grandParentNode = parent.parentNode
+            if (grandParentNode !== document) {
+              return dg(node, parent.parentNode); //如果没找到一直上级查找 知道抵达父级为 document查询结束
+            }else { //到达documen时候立即停止
+              value += node[key];
+              return value;
+            }
           }
         }
         return dg(node, parent);
