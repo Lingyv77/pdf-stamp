@@ -245,8 +245,9 @@
       */
       getCanvasBoxXY() {
         let canvasBox = this.$refs.canvasBox; //iamge放置定位盒子
-        let canLeft = this.getDomLeft(canvasBox, "offsetLeft");
-        let canTop = this.getDomLeft(canvasBox, "offsetTop");
+        let xy = this.getDomLeft(canvasBox);
+        let canLeft = xy[0];
+        let canTop = xy[1];
         return [canLeft, canTop];
       },
       //按下
@@ -431,30 +432,32 @@
        * getDom 递归检测DOM 确定定位多次赋值 得到总真实offsetLeft 和 offsetTop
        * key: 可选 offsetLeft 和 offsetTop
        */
-      getDomLeft(node, key) {
+      getDomLeft(node) {
         let _this = this;
-        let value = 0; //储存值
+        let valueXY = [0, 0]; //储存值
  
         let parent = node.parentNode;
         let uncertain = ["static", "initial", "revert" , "unset" ]; //定位被确定
         function dg(node, parent) {
+          /**
+           * //是否需要scrollXY (注销注释将不调用this.onScroll)
+           * valueXY[0] -= parent.scrollLeft; //scrollLeft
+           * valueXY[1] -= parent.scrollTop;  //scrollTop
+           */
+          valueXY[0] -= parent.scrollLeft; //scrollLeft
+          valueXY[1] -= parent.scrollTop;  //scrollTop
           if (!~uncertain.indexOf(_this.getStyleVal(parent, "position"))) { 
-            switch(key) {
-              case "offsetLeft":
-                value += node[key] + _this.matchNum(_this.getStyleVal(parent, "borderLeft"));
-              break;
-              case "offsetTop":
-                value += node[key] + _this.matchNum(_this.getStyleVal(parent, "borderTop"));
-              break;
-            }
+            valueXY[0] += node.offsetLeft + _this.matchNum(_this.getStyleVal(parent, "borderLeft"));
+            valueXY[1] += node.offsetTop + _this.matchNum(_this.getStyleVal(parent, "borderTop"));
             return dg(parent, parent.parentNode); //多次上级访问找找到父节确定定位的元素 做 坐标 位置重新规划为定位后的元素 进行下次访问再取坐标
           }else {
             let grandParentNode = parent.parentNode
             if (grandParentNode !== document) {
               return dg(node, parent.parentNode); //如果没找到一直上级查找 知道抵达父级为 document查询结束
             }else { //到达documen时候立即停止
-              value += node[key];
-              return value;
+              valueXY[0] += node.offsetLeft;
+              valueXY[1] += node.offsetTop;
+              return valueXY;
             }
           }
         }
