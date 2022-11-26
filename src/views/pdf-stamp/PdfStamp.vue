@@ -444,8 +444,6 @@
            * valueXY[0] -= parent.scrollLeft; //scrollLeft
            * valueXY[1] -= parent.scrollTop;  //scrollTop
            */
-          valueXY[0] -= parent.scrollLeft; //scrollLeft
-          valueXY[1] -= parent.scrollTop;  //scrollTop
           if (!~uncertain.indexOf(_this.getStyleVal(parent, "position"))) { 
             valueXY[0] += node.offsetLeft + _this.matchNum(_this.getStyleVal(parent, "borderLeft"));
             valueXY[1] += node.offsetTop + _this.matchNum(_this.getStyleVal(parent, "borderTop"));
